@@ -1,10 +1,13 @@
 ;; Sane Defauts
+
+;; Only available in graphical emacs
 ;(tool-bar-mode -1)
-(scroll-bar-mode -1)
+;(scroll-bar-mode -1)
+;(set-fringe-mode 10)
+
 (add-hook 'before-save-hook
           'delete-trailing-whitespace)
 (menu-bar-mode -1)
-(set-fringe-mode 10)   ;Give some breathing room
 (setq inhibit-startup-message -1)
 
 (setq visible-bell nil)
