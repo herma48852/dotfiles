@@ -102,3 +102,50 @@
   ([remap describe-command] . helpful-command)
   ([remap describe-variable] . counsel-describe-variable)
   ([remap describe-key] . helpful-key))
+
+;; brute force global key defs:
+;(global-set-key [f7] 'isearch-forward)
+;(global-set-key [S-f7] 'isearch-backward)
+
+; Better package for defining keys and prefixes. See daviwil for example with magit
+(use-package general)
+(general-define-key
+ [f6] 'other-window ; "C-;" would be better
+ [f7] 'isearch-forward
+ [S-f7] 'isearch-backward)
+
+(use-package hydra)
+
+; This function does nothing with emacs-nox
+(defhydra hydra-text-scale (:timeout 4)
+  "scale text"
+  ("j" text-scale-increase "in")
+  ("k" text-scale-decrease "out")
+  ("f" nil  "finished" :exit t))
+
+(use-package beacon)
+
+(use-package projectile)
+
+;(use-package lsp-ivy)
+
+
+(use-package lsp-mode
+;  :commands (lsp lsp-deferred)
+  :init
+  (setq lsp-keymap-prefix "C-c l")
+  :config
+  (lsp-enable-which-key-integration t))
+
+;(use-package lsp-mode)
+(use-package company)
+(defun development-mode ()
+  "Modes used for development."
+  (interactive)
+  (company-mode t)
+  (lsp t)
+  (setq indent-tabs-mode nil))
+
+(add-hook 'c-mode-hook 'development-mode)
+(add-hook 'c++-mode-hook 'development-mode)
+(add-hook 'emacs-lisp-mode-hook 'development-mode)
