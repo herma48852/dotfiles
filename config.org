@@ -1,0 +1,320 @@
+
+#+TITLE: FBH's Emacs Config
+#+AUTHOR: Franklin B. Herman
+#+OPTIONS: num:nil
+#+SETUPFILE: https://fniessen.github.io/org-html-themes/org/theme-readtheorg.setup
+
+* INITIALIZATION & NATIVE COMP
+This section dynamically detects the Homebrew path and the latest GCC version to fix the "libgccjit" and "gcc driver" errors[cite: 1].
+It works on both Intel (x64) and Apple Silicon (M-series)[cite: 2, 4].
+
+#+BEGIN_SRC emacs-lisp
+  ;; Silence the "zsh" migration warning globally for all Emacs shells 
+  (setenv "BASH_SILENCE_DEPRECATION_WARNING" "1")
+  
+  ;; Standard "Panic" key for canceling commands
+  (global-set-key (kbd "C-g") 'keyboard-quit)
+#+END_SRC
+
+#+BEGIN_SRC emacs-lisp
+(when (eq system-type 'darwin)
+  ;; 1. Ensure Emacs has the correct PATH and environment from the shell 
+  (use-package exec-path-from-shell
+    :ensure t
+    :config
+    (when (memq window-system '(mac ns x))
+      (exec-path-from-shell-initialize)
+      (exec-path-from-shell-copy-env "LIBRARY_PATH")
+      ;; Also copy the Gemini API key from your .bash_profile
+      (exec-path-from-shell-copy-env "GEMINI_API_KEY")))
+
+  ;; 2. Robust GCC/libgccjit path discovery for Native Compilation [cite: 4, 5]
+  (let* ((brew-bin (if (file-exists-p "/opt/homebrew/bin/brew") 
+                       "/opt/homebrew/bin/brew"   ; Apple Silicon Path 
+                     "/usr/local/bin/brew"))      ; Intel Path 
+         (gcc-prefix (when (file-exists-p brew-bin)
+                       (string-trim (shell-command-to-string (concat brew-bin " --prefix gcc")))))
+         (gcc-bin-dir (when gcc-prefix (concat gcc-prefix "/bin")))
+         ;; Verify directory exists before searching for GCC executables 
+         (gcc-bin (when (and gcc-bin-dir (file-directory-p gcc-bin-dir))
+                    (directory-files gcc-bin-dir t "^gcc-[0-9]+$")))
+         (gcc-executable (when gcc-bin (car (last gcc-bin))))
+         (gcc-version (when gcc-executable 
+                        (car (last (split-string gcc-executable "-"))))))
+    
+    (when (and gcc-executable gcc-version)
+      ;; Set the driver path so Emacs can compile Lisp to machine code [cite: 6]
+      (setq native-comp-driver-path gcc-executable)
+      
+      ;; Construct the LIBRARY_PATH specifically for libgccjit [cite: 7]
+      (let ((lib-path (concat gcc-prefix "/lib/gcc/" gcc-version))
+            (current-lib-path (or (getenv "LIBRARY_PATH") "")))
+        (setenv "LIBRARY_PATH" 
+                (if (string-match-p (regexp-quote lib-path) current-lib-path)
+                    current-lib-path
+                  (concat lib-path ":" current-lib-path)))))))
+#+END_SRC
+
+* PACKAGE MANAGEMENT
+#+BEGIN_SRC emacs-lisp
+(require 'package)
+
+;; 1. Add the MELPA repository
+(add-to-list 'package-archives '("melpa" . "https://melpa.org/packages/") t)
+
+;; 2. Initialize the package system (CRITICAL)
+(package-initialize)
+
+;; 3. Refresh the package list if this is the first time running
+(unless package-archive-contents
+  (package-refresh-contents))
+
+;; 4. Install use-package if it's missing
+(unless (package-installed-p 'use-package)
+  (package-install 'use-package))
+
+(require 'use-package)
+
+;; 5. Force ALL future packages to download automatically
+(setq use-package-always-ensure t)
+#+END_SRC
+
+* Org Mode
+#+BEGIN_SRC emacs-lisp
+(setq org-default-notes-file "~/org/notes.org")
+(use-package org-bullets
+  :ensure t
+  :hook (( org-mode ) . org-bullets-mode))
+(setq org-startup-indented t)
+(add-hook 'org-mode-hook 'org-indent-mode)
+(global-set-key (kbd "C-c l") #'org-store-link)
+(global-set-key (kbd "C-c a") #'org-agenda)
+(global-set-key (kbd "C-c c") #'org-capture)
+#+END_SRC
+
+* org-babel
+#+begin_src emacs-lisp
+  (setq org-babel-python-command "python3")
+  (org-babel-do-load-languages
+   'org-babel-load-languages
+   '((python . t)))
+#+end_src
+
+
+* gptel
+#+BEGIN_SRC emacs-lisp
+  (use-package gptel
+    :ensure t
+    :config
+    ;; Pull the key from the Bash environment variable [cite: 14]
+    (setq gptel-api-key (getenv "GEMINI_API_KEY")) 
+
+    ;; Explicitly load the Gemini backend module [cite: 11]
+    (require 'gptel-gemini)
+
+    ;; Define the Gemini backend and assign it to a variable 
+    (defvar gptel-my-gemini-backend nil)
+    (setq gptel-my-gemini-backend 
+          (gptel-make-gemini "My Gemini" :stream t :key gptel-api-key))
+
+    ;; Set the default backend objects [cite: 16, 17]
+    (setq gptel-default-backend gptel-my-gemini-backend)
+    (setq gptel-backend gptel-my-gemini-backend))
+#+END_SRC
+* evil mode
+#+BEGIN_SRC emacs-lisp
+;; VIM bindings getting easier. To enable
+;; M-x evil-mode
+#+END_SRC
+* Themes
+#+BEGIN_SRC emacs-lisp
+(use-package doom-themes
+  :ensure t
+  :config
+  (setq doom-themes-enable-bold t    ; if nil, bold is universally disabled
+  doom-themes-enable-italic t) ; if nil, italics is universally disabled
+  ;; Sets the default theme to load!!! 
+  (load-theme 'doom-one t))
+
+;; No nerd-iconds
+;;(use-package doom-modeline
+;;  :ensure t
+;;  :config
+;;  (doom-modeline-mode 1))
+
+#+END_SRC
+* Fonts
+#+BEGIN_SRC emacs-lisp
+  (set-face-attribute 'default nil
+     :height 150)
+  ;;(set-face-attribute 'default nil
+  ;;  :font "SauceCodePro Nerd Font 11"
+  ;;  :weight 'medium)
+  ;;(set-face-attribute 'variable-pitch nil
+  ;;  :font "Ubuntu Nerd Font 11"
+  ;;  :weight 'medium)
+  ;;(set-face-attribute 'fixed-pitch nil
+  ;;  :font "SauceCodePro Nerd Font 11"
+  ;;  :weight 'medium)
+  ;;(add-to-list 'default-frame-alist '(font . "SauceCodePro Nerd Font 11"))
+#+END_SRC
+* GUI
+#+BEGIN_SRC emacs-lisp
+  (global-visual-line-mode t)
+  (tool-bar-mode -1)
+  (menu-bar-mode -1)
+
+  ;; Use builtin relative line mode globally
+  (setq display-line-numbers-type 'relative)
+  (global-display-line-numbers-mode t)
+  
+  ;; Beacon will highlight the line your cursor point  is on when scrolling
+  ;; through the buffer.
+  (use-package beacon
+    :ensure t
+    :config
+    (beacon-mode 1))
+#+END_SRC
+* Misc Key-Bindings
+#+BEGIN_SRC emacs-lisp
+  (windmove-default-keybindings)
+  (setq windmove-wrap-around t)
+
+  (use-package which-key
+    :ensure t
+    :config
+       (which-key-mode))
+
+  (defun buffer-or-filename-to-kill-ring ()
+    "Store buffer file name or buffer name if not visting a file to kill-ring"
+    (interactive)
+    (cond ((buffer-file-name)
+           (setq tmp-name (format "%s" (buffer-file-name))))
+          (t (setq tmp-name (format "%s" (buffer-name)))))
+    (split-window-below nil)
+    (windmove-down nil)
+    (switch-to-buffer "*scratch*" nil 'force-same-window)
+    (end-of-buffer nil)
+    (newline nil 1)
+    (insert tmp-name)
+    (set-mark-command nil)
+    (move-beginning-of-line 1)
+    (kill-ring-save 1 2 1)
+    (delete-window))
+
+  (defun create-named-shell ()
+    (interactive)
+    (shell)
+    (rename-buffer
+     (read-from-minibuffer "Rename-buffer (to new name): ")))
+
+  (defun reload-init-el ()
+    (interactive)
+    (load-file "~/.emacs.d/init.el"))
+
+  (global-set-key (kbd "C-c r r") `reload-init-el)
+  (global-set-key (kbd "C-c f f") `buffer-or-filename-to-kill-ring)
+  (global-set-key (kbd "C-x x s") `create-named-shell)
+  (global-set-key [f9] `compile)
+  (global-set-key (kbd "C-x x r") 'rename-buffer)
+  (global-superword-mode t)
+  (global-set-key (kbd "C-x p") 'find-file-at-point)
+
+#+END_SRC
+
+* Vertico
+#+BEGIN_SRC emacs-lisp
+;; The `vertico' package applies a vertical layout to the minibuffer.
+;; It also pops up the minibuffer eagerly so we can see the available
+;; options without further interactions.  This package is very fast
+;; and "just works", though it also is highly customisable in case we
+;; need to modify its behaviour.
+;;
+;; Further reading: https://protesilaos.com/emacs/dotemacs#h:cff33514-d3ac-4c16-a889-ea39d7346dc5
+(use-package vertico
+  :ensure t
+  :config
+  (setq vertico-cycle t)
+  (setq vertico-resize nil)
+  (vertico-mode 1))
+#+END_SRC
+* Marginalia
+#+BEGIN_SRC emacs-lisp
+;; The `marginalia' package provides helpful annotations next to
+;; completion candidates in the minibuffer.  The information on
+;; display depends on the type of content.  If it is about files, it
+;; shows file permissions and the last modified date.  If it is a
+;; buffer, it shows the buffer's size, major mode, and the like.
+;;
+;; Further reading: https://protesilaos.com/emacs/dotemacs#h:bd3f7a1d-a53d-4d3e-860e-25c5b35d8e7e
+(use-package marginalia
+  :ensure t
+  :config
+  (marginalia-mode 1))
+
+#+END_SRC
+
+* Orderless
+#+BEGIN_SRC emacs-lisp
+;; The `orderless' package lets the minibuffer use an out-of-order
+;; pattern matching algorithm.  It matches space-separated words or
+;; regular expressions in any order.  In its simplest form, something
+;; like "ins pac" matches `package-menu-mark-install' as well as
+;; `package-install'.  This is a powerful tool because we no longer
+;; need to remember exactly how something is named.
+;;
+;; Note that Emacs has lots of "completion styles" (pattern matching
+;; algorithms), but let us keep things simple.
+;;
+;; Further reading: https://protesilaos.com/emacs/dotemacs#h:7cc77fd0-8f98-4fc0-80be-48a758fcb6e2
+(use-package orderless
+  :ensure t
+  :config
+  (setq completion-styles '(orderless basic)))
+
+#+END_SRC
+* Consult
+#+BEGIN_SRC emacs-lisp
+;; The `consult' package provides lots of commands that are enhanced
+;; variants of basic, built-in functionality.  One of the headline
+;; features of `consult' is its preview facility, where it shows in
+;; another Emacs window the context of what is currently matched in
+;; the minibuffer.  Here I define key bindings for some commands you
+;; may find useful.  The mnemonic for their prefix is "alternative
+;; search" (as opposed to the basic C-s or C-r keys).
+;;
+;; Further reading: https://protesilaos.com/emacs/dotemacs#h:22e97b4c-d88d-4deb-9ab3-f80631f9ff1d
+(use-package consult
+  :ensure t
+  :bind (;; A recursive grep
+         ("M-s M-g" . consult-grep)
+         ;; Search for files names recursively
+         ("M-s M-f" . consult-find)
+         ;; Search through the outline (headings) of the file
+         ("M-s M-o" . consult-outline)
+         ;; Search the current buffer
+         ("M-s M-l" . consult-line)
+         ;; Switch to another buffer, or bookmarked file, or recently
+         ;; opened file.
+         ("M-s M-b" . consult-buffer)))
+#+END_SRC
+
+* Company
+#+BEGIN_SRC emacs-lisp
+        (use-package company
+          :ensure t
+          :config
+          (global-company-mode 1))
+        (add-hook 'after-init-hook 'global-company-mode)
+#+END_SRC
+* Comments
+#+BEGIN_SRC emacs-lisp
+;; I needed the elisp cmd below when package-install was generating signature errors
+;; (setq package-check-signature nil)
+
+;; #+SETUPFILE: ~/github/org-html-themes/org/theme-readtheorg-local.setup
+#+END_SRC
+
+
+
+
