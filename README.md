@@ -1,1 +1,1 @@
-Copy conmfig.org into .emacs.d
+Copy config.org into .emacs.d
